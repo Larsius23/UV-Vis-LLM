@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from utils.preprocessor import preprocess, detect_peaks
 
 st.set_page_config(
     page_title="UV-VIS Spectralyzer",
@@ -13,6 +14,9 @@ st.markdown("""
         [data-testid="stImage"] {
             display: flex;
             align-items: center;
+        }
+        a[data-testid="stHeaderActionElements"] {
+            display: none;
         }
         </style>
 """, unsafe_allow_html=True)
@@ -28,7 +32,7 @@ with col2:
 
 st.divider()
 
-#File Uploader
+# File Uploader
 uploaded_file = st.file_uploader(
     "Upload your spectrum (.csv)",
     type=["csv"],
@@ -43,11 +47,17 @@ if uploaded_file is not None:
     if "wavelength_nm" not in df.columns or "absorbance" not in df.columns:
         st.error("ERROR: Your CSV must have columns name 'wavelength_nm' and 'absorbance'.")
     else:
-        #Show basic info
+        # Preprocess
+        wl, ab = preprocess(df)
+
+        # Detect peaks
+        peaks = detect_peaks(wl, ab)
+
+        # Metrics
         col_a, col_b, col_c = st.columns(3)
-        col_a.metric("Wavelength Range", f"{df['wavelength_nm'].min()}-{df['wavelength_nm'].max()} nm")
-        col_b.metric("λmax", f"{df.loc[df['absorbance'].idxmax(), 'wavelength_nm']} nm")
-        col_c.metric("Max Absorbance", f"{df['absorbance'].max():.4f}")
+        col_a.metric("Wavelength Range", f"{wl.min():.0f}–{wl.max():.0f} nm")
+        col_b.metric("λmax", f"{wl[ab.argmax()]:.1f} nm")
+        col_c.metric("Peaks Detected", len(peaks))
 
         st.divider()
 
@@ -55,12 +65,26 @@ if uploaded_file is not None:
         fig = go.Figure()
 
         fig.add_trace(go.Scatter(
-            x=df["wavelength_nm"],
-            y=df["absorbance"],
+            x=wl,
+            y=ab,
             mode="lines",
             name="Absorbance",
             line=dict(color="#7B2FBE", width=2.5),
         ))
+
+        # Mark peaks on chart
+        for peak in peaks:
+            color = "#FF4B4B" if peak["type"] == "major" else "#FFA500"
+            fig.add_annotation(
+                x=peak["wavelength_nm"],
+                y=peak["absorbance"],
+                text=f"{peak['wavelength_nm']} nm",
+                showarrow=True,
+                arrowhead=2,
+                arrowcolor=color,
+                font=dict(color=color, size=11),
+                ay=-40
+            )
 
         fig.update_layout(
             title="UV-Vis Absorption Spectrum",
@@ -72,6 +96,15 @@ if uploaded_file is not None:
         )
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # Peaks table
+        st.subheader("Detected Peaks")
+        if peaks:
+            peaks_df = pd.DataFrame(peaks)
+            peaks_df.columns = ["Wavelength (nm)", "Absorbance", "Type"]
+            st.dataframe(peaks_df, use_container_width=True)
+        else:
+            st.info("No significant peaks detected.")
 
 else:
     st.info("Upload a CSV file to get started.")
