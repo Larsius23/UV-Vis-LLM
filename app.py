@@ -6,7 +6,7 @@ from utils.llm import interpret_spectrum
 
 st.set_page_config(
     page_title="UV-VIS Spectralyzer",
-    page_icon="/Users/larsius/Desktop/codex/UV-Vis-LLM/spectralyzer.png",
+    page_icon="spectralyzer.png",
     layout="wide"
 )
 
