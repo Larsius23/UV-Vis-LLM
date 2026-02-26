@@ -12,15 +12,22 @@ st.set_page_config(
 )
 
 st.markdown("""
-        <style>
-        [data-testid="stImage"] {
-            display: flex;
-            align-items: center;
-        }
-        a[data-testid="stHeaderActionElements"] {
-            display: none;
-        }
-        </style>
+    <style>
+    [data-testid="stImage"] {
+        display: flex;
+        align-items: center;
+    }
+    a[data-testid="stHeaderActionElements"] {
+        display: none;
+    }
+    [data-testid="stSidebar"] {
+        background-color: #0e0e1a;
+    }
+    div[data-testid="stTabs"] button {
+        font-size: 15px;
+        font-weight: 600;
+    }
+    </style>
 """, unsafe_allow_html=True)
 
 col1, col2 = st.columns([1, 14])
@@ -31,6 +38,23 @@ with col1:
 with col2:
     st.markdown("<h1 style='margin-top: 5px;'>Spectralyzer</h1", unsafe_allow_html=True)
     st.caption("Upload a spectrum, get an interpretation powered by AI.")
+
+# Sidebar
+with st.sidebar:
+    st.image("spectralyzer.png", width=80)
+    st.markdown("***About Spectralyzer***")
+    st.markdown("An AI-powered UV-Vis spectrum analyzer built with Llama3 and Streamlit.")
+    st.divider()
+    st.markdown("**How to use:**")
+    st.markdown("1. Upload a CSV spectrum file")
+    st.markdown("2. View detected peaks on the chart")
+    st.markdown("3. Click **Interpret Spectrum** for AI analysis")
+    st.markdown("4. Use **Beer-Lambert** tab for concentration calculation")
+    st.divider()
+    st.markdown("**CSV Format Required:")
+    st.code("wavelength_nm,absorbance\n200.00,0.005\n201.00,0.07\n...")
+    st.divider()
+    st.caption("Built by Larsius · 2026")
 
 st.divider()
 
@@ -122,9 +146,45 @@ with tab1:
                             lambda_max=float(wl[ab.argmax()])
                         )
                         st.markdown(interpretation)
+                    
+                        # Export report
+                        st.divider()
+                        st.subheader("Export Report")
+
+                        report = f"""
+                        SPECTRALYZER - UV-Vis Analysis Report
+                        ======================================
+                        Date: {pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")}
+
+                        SPECTRUM SUMMARY
+                        ----------------
+                        Wavelength Range: {wl.min():.0f}-{wl.max():.0f} nm
+                        Primary λmax: {wl[ab.argmax()]:.1f} nm
+                        Peaks Detected: {len(peaks)}
+
+                        DETECTED PEAKS
+                        --------------
+                        """
+                        for peak in peaks:
+                            report += f" λ = {peak[wavelength_nm]} nm | A = {peak['absorbance']} | {peak['type']}\n"
+
+                        report += f"""
+                        SPECTRALYZER INTERPRETATION
+                        ---------------------------
+                        {interpretation}
+                        """
+
+                        st.download_button(
+                            label="Download Report (.txt)",
+                            data=report,
+                            file_name="spectralyzer_report.txt",
+                            mime="text/plain",
+                            type="primary"
+                        )
+                    
                     except Exception as e:
                         st.error(f"LLM Error: {e}. Make sure Spectrolyzer is running with 'ollama serve'.")
-
+  
     else:
         st.info("Upload a CSV file to get started.")
 
@@ -179,7 +239,7 @@ with tab2:
                 epsilon=epsilon_input,
                 path_length=path_length_input
             )
-            col_r1, colr2, = st.columns(2)
+            col_r1, col_r2, = st.columns(2)
             col_r1.metric(
                 "Concentration",
                 f"{result['concentration']:.6f} mol/L",
