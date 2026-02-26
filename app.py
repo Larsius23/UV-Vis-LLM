@@ -151,28 +151,23 @@ with tab1:
                         st.divider()
                         st.subheader("Export Report")
 
-                        report = f"""
-                        SPECTRALYZER - UV-Vis Analysis Report
-                        ======================================
-                        Date: {pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")}
-
-                        SPECTRUM SUMMARY
-                        ----------------
-                        Wavelength Range: {wl.min():.0f}-{wl.max():.0f} nm
-                        Primary λmax: {wl[ab.argmax()]:.1f} nm
-                        Peaks Detected: {len(peaks)}
-
-                        DETECTED PEAKS
-                        --------------
-                        """
+                        report = "\n".join([
+                            "SPECTRALYZER - UV-Vis Analysis Report",
+                            "======================================",
+                            f"Date: {pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")}",
+                            "",
+                            "SPECTRUM SUMMARY",
+                            "----------------",
+                            f"Wavelength Range: {wl.min():.0f}-{wl.max():.0f} nm",
+                            f"Primary λmax: {wl[ab.argmax()]:.1f} nm",
+                            f"Peaks Detected: {len(peaks)}",
+                            "",
+                            "DETECTED PEAKS",
+                            "--------------",
+                        ])
                         for peak in peaks:
-                            report += f" λ = {peak[wavelength_nm]} nm | A = {peak['absorbance']} | {peak['type']}\n"
-
-                        report += f"""
-                        SPECTRALYZER INTERPRETATION
-                        ---------------------------
-                        {interpretation}
-                        """
+                            report += f"\nλ = {peak['wavelength_nm']} nm | A = {peak['absorbance']} | {peak['type']}"
+                        report += "\n\nSPECTRALYZER INTERPRETATION\n---------------------------\n" + interpretation
 
                         st.download_button(
                             label="Download Report (.txt)",
