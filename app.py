@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from utils.preprocessor import preprocess, detect_peaks
+from utils.llm import interpret_spectrum
 
 st.set_page_config(
     page_title="UV-VIS Spectralyzer",
@@ -95,16 +96,31 @@ if uploaded_file is not None:
             height=450
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         # Peaks table
         st.subheader("Detected Peaks")
         if peaks:
             peaks_df = pd.DataFrame(peaks)
             peaks_df.columns = ["Wavelength (nm)", "Absorbance", "Type"]
-            st.dataframe(peaks_df, use_container_width=True)
+            st.dataframe(peaks_df, width='stretch')
         else:
             st.info("No significant peaks detected.")
+
+st.divider()
+st.subheader("Spectronalysis")
+
+if st.button("Interpret Spectrum", type="primary"):
+    with st.spinner("Analyzing spectrum with Spectrolyzer..."):
+        try:
+            interpretation = interpret_spectrum(
+                peaks=peaks,
+                wl_range=(float(wl.min()), float(wl.max())),
+                lambda_max=float(wl[ab.argmax()])
+            )
+            st.markdown(interpretation)
+        except Exception as e:
+            st.error(f"LLM Error: {e}. Make sure Spectrolyzer is running with 'ollama serve'.")
 
 else:
     st.info("Upload a CSV file to get started.")
