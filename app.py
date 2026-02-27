@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from utils.preprocessor import preprocess, detect_peaks
 from utils.llm import interpret_spectrum
 from utils.beer_lambert import calculate_concentration
+from utils.compound_db import search_compound, get_all_compounds
 
 st.set_page_config(
     page_title="UV-VIS Spectralyzer",
@@ -58,7 +59,7 @@ with st.sidebar:
 
 st.divider()
 
-tab1, tab2, tab3 = st.tabs(["Spectrum Interpretation", "Beer-Lambert Analysis", "Multi-Spectra Comparison"])
+tab1, tab2, tab3, tab4 = st.tabs(["Spectrum Interpretation", "Beer-Lambert Analysis", "Multi-Spectra Comparison", "Compound Search"])
 
 with tab1:
     # File Uploader
@@ -389,3 +390,83 @@ with tab3:
                     shift = round(lambda_maxes[names[j]] - lambda_maxes[names[i]], 1)
                     direction = "Bathochromic" if shift > 0 else "Hypsochromic" if shift < 0 else "No shift"
                     st.markdown(f"- **{names[i]}** to **{names[j]}**: {'+' if shift > 0 else ''}{shift} nm - {direction}")
+
+with tab4:
+    st.subheader("Compound Search")
+    st.markdown("Search for a compound and view its known UV-Vis absorption profile.")
+
+    st.divider()
+
+    col_search, col_browse = st.columns([3, 1])
+
+    with col_search:
+        query = st.text_input(
+            "Search by compound name, formula, or class",
+            placeholder="e.g. benzene, C6H6, aromatic..."
+        )
+
+    with col_browse:
+        st.markdown("<br>", unsafe_allow_html=True)
+        show_all = st.checkbox("Show all compounds")
+
+    if show_all:
+        results = list(search_compound("") or [])
+        from utils.compound_db import COMPOUND_DATABASE
+        results = list(COMPOUND_DATABASE.values())
+    elif query:
+        results = search_compound(query)
+    else:
+        results = []
+
+    if query and not results:
+        st.warning(f"No compounds found for '{query}'. Try a different search term.")
+        st.info("Available compounds: " + ", ".join(get_all_compounds()))
+
+    for compound in results:
+        with st.expander(f"{compound['name']} — {compound['formula']}", expanded=True):
+            col_info, col_peaks = st.columns([2, 3])
+
+            with col_info:
+                st.markdown(f"**Compound class:** {compound['compound_class']}")
+                st.markdown(f"**Chromophore:** {compound['chromophore']}")
+                st.markdown(f"**SMILES:** `{compound['smiles']}`")
+                st.info(compound['notes'])
+
+            with col_peaks:
+                st.markdown("**Known UV-Vis Peaks:**")
+                peaks_data = []
+                for peak in compound["peaks"]:
+                    peaks_data.append({
+                        "λ (nm)": peak["wavelength_nm"],
+                        "Transition": peak["transition"],
+                        "ε (L·mol⁻¹·cm⁻¹)": peak["epsilon"],
+                        "Intensity": peak["intensity"]
+                    })
+                st.dataframe(pd.DataFrame(peaks_data), width='stretch')
+
+            # Mini chart
+            import numpy as np
+            wl_range = np.linspace(190, 450, 500)
+            ab_sim = np.zeros(len(wl_range))
+
+            for peak in compound["peaks"]:
+                ab_sim += peak["epsilon"] / max(p["epsilon"] for p in compound["peaks"]) * \
+                          np.exp(-((wl_range - peak["wavelength_nm"])**2) / (2 * 20**2))
+
+            fig_compound = go.Figure()
+            fig_compound.add_trace(go.Scatter(
+                x=wl_range,
+                y=ab_sim,
+                mode="lines",
+                line=dict(color="#7B2FBE", width=2),
+                name=compound["name"]
+            ))
+            fig_compound.update_layout(
+                xaxis_title="Wavelength (nm)",
+                yaxis_title="Normalized Absorbance",
+                template="plotly_dark",
+                height=250,
+                margin=dict(t=20, b=40)
+            )
+            st.plotly_chart(fig_compound, width='stretch')
+    
