@@ -58,7 +58,7 @@ with st.sidebar:
 
 st.divider()
 
-tab1, tab2 = st.tabs(["Spectrum Interpretation", "Beer-Lambert Analysis"])
+tab1, tab2, tab3 = st.tabs(["Spectrum Interpretation", "Beer-Lambert Analysis", "Multi-Spectra Comparison"])
 
 with tab1:
     # File Uploader
@@ -243,3 +243,149 @@ with tab2:
             col_r2.markdown(f"**Measurement Reliability:**\n\n{result['reliability']}")
         except ValueError as e:
             st.error(f"Input Error: {e}")
+
+with tab3:
+    st.subheader("Multi-Spectra Comparison")
+    st.markdown("Upload multiple spectra to compare them all on one chart.")
+
+    st.divider()
+
+    # Choose input mode
+    input_mode = st.radio(
+        "How do you want to upload your spectra?",
+        ["Single file with multiple columns", "Multiple separate CSV files"],
+        horizontal=True
+    )
+
+    st.divider()
+
+    spectra = {} # will hold{name: (wl, ab)}
+
+    if input_mode == "Single file with multiple columns":
+        st.info("Expected format: First column = wavelength_nm, remaining columns = spectra (one per column)")
+        st.code("wavelength_nm, sample_1, sample_2, sample_3\n200.00, 0.05, 0.08, 0.12\n201.00, 0.07, 0.10, 014")
+
+        multi_file = st.file_uploader(
+            "Upload multi-column CSV",
+            type=["csv"],
+            key="multi_file"
+        )
+
+        if multi_file is not None:
+            df_multi = pd.read_csv(multi_file)
+            if df_multi.shape[1] < 2:
+                st.error("File must have at least 2 columns (wavelength + one spectrum).")
+            else:
+                from utils.preprocessor import load_multi_spectra
+                spectra = load_multi_spectra(df_multi)
+                st.success(f"Loaded {len(spectra)} spectra from file!")
+    
+    else:
+        st.markdown("**Upload as many CSV files as you want.** Each must have 'wavelength_nm' and 'absorbance' columns.")
+
+        multi_files = st.file_uploader(
+            "Upload spectrum CSV files",
+            type=["csv"],
+            accept_multiple_files=True,
+            key="multi_files"
+        )
+
+        if multi_files:
+            for f in multi_files:
+                df_temp = pd.read_csv(f)
+                if "wavelength_nm" in df_temp.columns and "absorbance" in df_temp.columns:
+                    wl_temp, ab_temp = preprocess(df_temp)
+                    name = f.name.replace(".csv", "")
+                    spectra[name] = (wl_temp, ab_temp)
+                else:
+                    st.warning(f"Skipped {f.name} - missing required columns.")
+            
+            if spectra:
+                st.success(f"Loaded {len(spectra)} spectra!")
+    
+    # -- Render everything once spectra are loaded --
+    if spectra:
+        colors = [
+            "#7B2FBE", "#FF4B4B", "#00C49A", "#FFB347",
+            "#4FC3F7", "#FF69B4", "#A8E063", "#F7971E"
+        ]
+
+        st.divider()
+
+        #Overlay chart
+        fig = go.Figure()
+
+        for i, (name, (wl, ab)) in enumerate(spectra.items()):
+            color = colors[i % len(colors)]
+            fig.add_trace(go.Scatter(
+                x=wl,
+                y=ab,
+                mode="lines",
+                name=name,
+                line=dict(color=color, width=2.5),
+            ))
+
+            #Annotate peaks
+            peaks = detect_peaks(wl, ab)
+            for peak in peaks:
+                fig.add_annotation(
+                    x=peak["wavelength_nm"],
+                    y=peak["absorbance"],
+                    text=f"{peak['wavelength_nm']}",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor=color,
+                    font=dict(color=color, size=10),
+                    ay=-35 if i % 2 == 0 else 35
+                )
+        
+        fig.update_layout(
+            title="Multi-Spectra Overlay",
+            xaxis_title="Wavelength (nm)",
+            yaxis_title="Absorbance",
+            template="plotly_dark",
+            hovermode="x unified",
+            height=500
+        )
+
+        st.plotly_chart(fig, width='stretch')
+
+        st.divider()
+
+        # Peak comparison table
+        st.subheader("Peak Summary - All Spectra")
+
+        for i, (name, (wl, ab)), in enumerate(spectra.items()):
+            color = colors[i % len(colors)]
+            peaks = detect_peaks(wl, ab)
+            st.markdown(f"**{name}** - λmax: {wl[ab.argmax()]:.1f} nm")
+            if peaks:
+                df_peaks = pd.DataFrame(peaks)
+                df_peaks.columns = ["Wavelength (nm)", "Absorbance", "Type"]
+                st.dataframe(df_peaks, width='stretch')
+            else:
+                st.info(f"No significant peaks detected in {name}.")
+            st.markdown("")
+        
+        st.divider()
+
+        # Shift summary
+        st.subheader("λmax Shift Summary")
+
+        lambda_maxes = {
+            name: round(float(wl[ab.argmax()]), 1)
+            for name, (wl, ab) in spectra.items()
+        }
+
+        names = list(lambda_maxes.keys())
+        cols = st.columns(len(names))
+        for i, (name, lmax) in enumerate(lambda_maxes.items()):
+            cols[i].metric(name, f"{lmax} nm")
+        
+        if len(names) >=2:
+            st.markdown("**Pairwise shifts:**")
+            for i in range(len(names)):
+                for j in range(i + 1, len(names)):
+                    shift = round(lambda_maxes[names[j]] - lambda_maxes[names[i]], 1)
+                    direction = "Bathochromic" if shift > 0 else "Hypsochromic" if shift < 0 else "No shift"
+                    st.markdown(f"- **{names[i]}** to **{names[j]}**: {'+' if shift > 0 else ''}{shift} nm - {direction}")

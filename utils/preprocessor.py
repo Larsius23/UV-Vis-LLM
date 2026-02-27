@@ -42,3 +42,23 @@ def detect_peaks(wl, ab, min_prominence=0.05):
     # Sort by absorbance descending
     peaks.sort(key=lambda x: x["absorbance"], reverse=True)
     return peaks
+
+def load_multi_spectra(df):
+    """
+    Handle a multi-column spectrum CSV.
+    First column = wavelength, remaining columns = individual spectra.
+    Returns a dict of {column_name: (wavelengths, absorbances)}
+    """
+    spectra = {}
+    wavelengths = df.iloc[:, 0].values
+
+    for col in df.columns[1:]:
+        ab = df[col].values.astype(float)
+        ab = np.clip(ab, 0, None)
+        if len(ab) >=11:
+            window = min(11, len (ab) if len(ab) % 2 != 0 else len(ab) - 1)
+            ab = savgol_filter(ab, window_length=window, polyorder=3)
+            ab = np.clip(ab, 0, None)
+        spectra[col] = (wavelengths, ab)
+
+    return spectra
